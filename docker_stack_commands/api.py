@@ -5,7 +5,7 @@ import time
 import uuid
 
 import yaml
-from zmtools import loading_animation
+from zmtools import loading_animation, dummy_context_manager
 
 
 def _command_loop(cmd, args, expected, max_attempts=2, pause=2, negative=False):
@@ -45,7 +45,11 @@ def _command_loop(cmd, args, expected, max_attempts=2, pause=2, negative=False):
 
 
 class Stack():
-    def __init__(self, stack_yaml_file_locations, stack_name=None, components_mapping={}):
+    def __init__(self, stack_yaml_file_locations, stack_name=None, components_mapping={}, show_loading=True):
+        if show_loading:
+            self._cm = loading_animation
+        else:
+            self._cm = dummy_context_manager
         if stack_name is None:
             stack_name = str(uuid.uuid4()).replace("-", "")
         self.stack_name = stack_name
@@ -83,52 +87,80 @@ class Stack():
     def _deploy_args(self):
         return ["stack", "deploy", self.stack_name] + list(itertools.chain.from_iterable([["-c", stack_yaml_file_location] for stack_yaml_file_location in self.stack_yaml_file_locations]))
 
-    def check_deployed(self, should_be_deployed=False, quick_check=False):
+    def check_deployed(self, should_be_deployed=False, max_check_attempts=None, pause=None):
+        """Check if the stack is deployed
+
+        Args:
+            should_be_deployed (bool, optional): Will cause function to throw an excpetion if this criteria is not met. Defaults to False.
+            max_check_attempts (int, optional): Max amount of times to keep checking if the stack is fully deployed. If None and should_be_deployed, 2. If None and not should_be_deployed, 5. Defaults to None.
+            pause (int, optional): Seconds to pause between checks. If None and should_be_deployed, 3. If None and not should_be_deployed, 5. Defaults to None.
+
+        Raises:
+            ValueError: [description]
+        """
         if should_be_deployed:
             negative = False
-            if not quick_check:
-                max_attempts = 2
+            if max_check_attempts is None:
+                max_check_attempts = 2
+            if pause is None:
                 pause = 3
-            else:
-                max_attempts = 1
-                pause = 0
             phrase = "Checking deployed"
         else:
             negative = True
-            if not quick_check:
-                max_attempts = 5
+            if max_check_attempts is None:
+                max_check_attempts = 5
+            if pause is None:
                 pause = 5
-            else:
-                max_attempts = 1
-                pause = 0
             phrase = "Checking not deployed"
-        with loading_animation(phrase=phrase):
+        with self._cm(phrase=phrase):
             out = _command_loop("docker", self._check_deployed_args, self._deployed_validation,
-                                negative=negative, max_attempts=max_attempts, pause=pause)
+                                negative=negative, max_attempts=max_check_attempts, pause=pause)
             if not out[0]:
                 raise ValueError(
                     "Not deployed" if should_be_deployed else "Is deployed")
 
-    def deploy(self):
+    def deploy(self, max_check_attempts=1):
+        """Deploy the stack
+
+        Args:
+            max_check_attempts (int, optional): Max amount of times to keep chacking if the stack has deployed. Defaults to 1.
+
+        Raises:
+            ValueError: If the stack does not deploy
+        """
         self.check_deployed(should_be_deployed=False)
-        with loading_animation(phrase="Deploying"):
+        with self._cm(phrase="Deploying"):
             out = _command_loop("docker", self._deploy_args,
-                                self._deploying_validation, max_attempts=1)
+                                self._deploying_validation, max_attempts=max_check_attempts)
             if not out[0]:
                 raise ValueError("Error while deploying. Output:\n\n{out[1]}")
         self.check_deployed(should_be_deployed=True)
 
-    def teardown(self):
+    def teardown(self, max_check_attempts=1):
+        """Teardown the stack
+
+        Args:
+            max_check_attempts (int, optional): Max amount of times to keep checking if the stack has been torn down. Defaults to 1.
+
+        Raises:
+            ValueError: If the stack does not finish tearing down
+        """
         self.check_deployed(should_be_deployed=True)
-        with loading_animation(phrase="Tearing down"):
+        with self._cm(phrase="Tearing down"):
             out = _command_loop("docker", self._teardown_args,
-                                self._tearing_down_validation, max_attempts=1)
+                                self._tearing_down_validation, max_attempts=max_check_attempts)
             if not out[0]:
                 raise ValueError(
                     f"Error while tearing down. Output:\n\n{out[1]}")
         self.check_deployed(should_be_deployed=False)
 
     def logs(self, component, follow=False):
+        """Print logs of one component of a stack
+
+        Args:
+            component (str): The name of the component
+            follow (bool, optional): If True, continue following it to stdout. Defaults to False.
+        """
         status_cmd = ["docker"] + self._status_args + \
             [f"{self.stack_name}_{self.components_mapping.get(component, component)}"]
         if follow:
