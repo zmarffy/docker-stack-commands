@@ -54,10 +54,10 @@ class Stack():
             stack_name = str(uuid.uuid4()).replace("-", "")
         self.stack_name = stack_name
         self.stack_yaml_file_locations = stack_yaml_file_locations
-        components = []
+        components = set()
         for stack_yaml_file_location in self.stack_yaml_file_locations:
             with open(stack_yaml_file_location, "r") as f:
-                components.extend(
+                components.update(
                     list(yaml.load(f, Loader=yaml.FullLoader)["services"].keys()))
         self.components = components
         self.components_mapping = components_mapping
