@@ -45,6 +45,22 @@ def _command_loop(cmd, args, expected, max_attempts=2, pause=2, negative=False):
 
 
 class Stack():
+
+    """Class that represents a Docker stack
+
+    Args:
+        stack_yaml_file_locations (list[str]): Locations of the YAML files that specify stack details
+        stack_name (str, optional): Name of the stack. If None, generates a random name. Defaults to None.
+        components_mapping (dict, optional): A dict mapping friendly name of a component to internal name. Defaults to {}.
+        show_loading (bool, optional): If True, show a loading symbol when certain stack commands are run. Defaults to True.
+
+    Attributes:
+        stack_name (str): Name of the stack
+        stack_yaml_file_locations (list[str]): Locations of the YAML files that specify stack details
+        components (set): The names of the components that make up the stack
+        components_mapping (dict): A dict mapping friendly name of a component to internal name
+    """
+
     def __init__(self, stack_yaml_file_locations, stack_name=None, components_mapping={}, show_loading=True):
         if show_loading:
             self._cm = loading_animation
